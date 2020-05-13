@@ -50,7 +50,7 @@ function start() {
           addEmployee();
           break;
         case "Add manager":
-          addManager();
+          addEmployee();
           break;
         case "Update employee role":
           updateEmployeeRole();
@@ -70,7 +70,6 @@ function start() {
         case "Exit":
           connection.end();
           break;
-
         default:
           break;
       }
@@ -102,7 +101,7 @@ function departmentView() {
       .then(function (answer) {
         console.log(answer.department);
         connection.query(
-          `SELECT employee.id, employee.first_name, employee.last_name, role.title, department.name FROM employee INNER JOIN role ON (employee.role_id = role.id) INNER JOIN department ON (role.department_id = department.id AND department.name = '${answer.department}')`,
+          `SELECT employee.id, employee.first_name, employee.last_name, role.title, department.name department FROM employee INNER JOIN role ON (employee.role_id = role.id) INNER JOIN department ON (role.department_id = department.id AND department.name = '${answer.department}')`,
           function (err, results) {
             if (err) throw err;
             console.table(results);
@@ -115,15 +114,15 @@ function departmentView() {
 
 function managerView() {
   connection.query(
-    "SELECT employee.manager_id, CONCAT(m.first_name, ' ', m.last_name) manager FROM employee LEFT JOIN employee m ON m.id = employee.manager_id",
+    "SELECT DISTINCT employee.manager_id, CONCAT(m.first_name, ' ', m.last_name) manager FROM employee LEFT JOIN employee m ON m.id = employee.manager_id",
     function (err, results) {
       // if employee has no manager null is converted to a string
-      console.log(results);
       results.forEach((element) => {
         if (element.manager === null) {
           element.manager = "No manager assigned";
         }
       });
+      console.log(results);
       if (err) throw err;
       inquirer
         .prompt({
@@ -136,7 +135,6 @@ function managerView() {
           const managerObj = results.find(
             (res) => res.manager === answer.manager
           );
-          console.log(managerObj.manager_id);
           connection.query(
             `SELECT employee.id, employee.first_name, employee.last_name, employee.manager_id, CONCAT(m.first_name, ' ', m.last_name) manager FROM employee INNER JOIN role ON (employee.role_id = role.id) INNER JOIN department ON (role.department_id = department.id) LEFT JOIN employee m ON m.id = employee.manager_id WHERE employee.manager_id = ${managerObj.manager_id}`,
             function (err, results) {
@@ -153,25 +151,87 @@ function managerView() {
 function addEmployee() {
   connection.query("SELECT * FROM role", function (err, results) {
     if (err) throw err;
-    console.log(results);
-    inquirer.prompt([
-      {
-        type: "item",
-        name: "employeeFirstName",
-        message: "What is the employee's first name?",
-      },
-      {
-        type: "item",
-        name: "employeeLastName",
-        message: "What is the employee's last name?",
-      },
-      {
-        type: "list",
-        name: "employeeRole",
-        message: "What is the employee's role?",
-        choices: results.map((res) => res.title),
-      },
-    ]);
+    inquirer
+      .prompt([
+        {
+          type: "item",
+          name: "employeeFirstName",
+          message: "What is the employee's first name?",
+        },
+        {
+          type: "item",
+          name: "employeeLastName",
+          message: "What is the employee's last name?",
+        },
+        {
+          type: "list",
+          name: "employeeRole",
+          message: "What is the employee's role?",
+          choices: results.map((res) => res.title),
+        },
+      ])
+      .then(function (answer) {
+        // returns role object that was selected for new role
+        const objectRole = results.find(
+          (res) => res.title === answer.employeeRole
+        );
+        // creates another promise so that after the connection gets the results the promise moves on - this is what I was having issues with and only got working lastly (seems like everyone did)
+        new Promise(function (resolve, reject) {
+          connection.query(
+            `INSERT INTO employee (first_name, last_name, role_id) VALUES ('${answer.employeeFirstName}', '${answer.employeeLastName}', '${objectRole.id}')`,
+            function (err, results) {
+              if (err) throw err;
+              resolve(results);
+            }
+          );
+        }).then(function () {
+          connection.query(
+            "SELECT id, CONCAT(first_name, ' ', last_name) manager FROM employee",
+            function (err, results2) {
+              if (err) throw err;
+              inquirer
+                .prompt([
+                  {
+                    type: "list",
+                    name: "managerAssign",
+                    message:
+                      "Would you like to assign the new employee a manager?",
+                    choices: ["yes", "no"],
+                  },
+                  {
+                    type: "list",
+                    name: "managerSelected",
+                    message:
+                      "Which manager would you like to assign the employee?",
+                    choices: results2.map((res) => res.manager),
+                    when: function (answers) {
+                      return answers.managerAssign.includes("yes");
+                    },
+                  },
+                ])
+                // finds selected manager by id orders new id and assigns the manager id to the newest employee (just created)
+                .then(function (answer) {
+                  if (answer.managerAssign === "no") {
+                    console.log("employee created with no manager selected");
+                    start();
+                  } else {
+                    const objectid = results2.find(
+                      (res) => res.manager === answer.managerSelected
+                    );
+                    connection.query(
+                      `UPDATE employee SET manager_id = ${objectid.id} ORDER BY id DESC LIMIT 1`,
+                      function (err, results) {
+                        if (err) throw err;
+                        console.log("The employee was added successfully!");
+                        start();
+                      }
+                    );
+                  }
+                });
+            }
+          );
+        });
+      });
   });
 }
 
@@ -233,11 +293,52 @@ function updateEmployeeRole() {
   );
 }
 
+function updateEmployeeManager() {
+  connection.query(
+    "SELECT id, CONCAT(first_name, ' ', last_name) employee FROM employee",
+    function (err, results) {
+      if (err) throw err;
+      inquirer
+        .prompt([
+          {
+            type: "list",
+            name: "selectedEmployee",
+            message: "What employee would you like to select?",
+            choices: results.map((res) => res.employee),
+          },
+          {
+            type: "list",
+            name: "selectedManager",
+            message: `Who would you like to select to be their manager?`,
+            choices: results.map((res) => res.employee),
+          },
+        ])
+        .then(function (answer) {
+          // returns role object that was selected for new role
+          const employeeObject = results.find(
+            (res) => res.employee === answer.selectedEmployee
+          );
+          const managerObject = results.find(
+            (res) => res.employee === answer.selectedManager
+          );
+          connection.query(
+            `UPDATE employee SET manager_id = ${managerObject.id} WHERE id = ${employeeObject.id}`,
+            function (err) {
+              if (err) throw err;
+              console.log("The employee's manager was updated successfully!");
+              start();
+            }
+          );
+        });
+    }
+  );
+}
+
 function viewAllRoles() {
   connection.query("SELECT title, salary FROM role", function (err, results) {
     if (err) throw err;
     console.table(results);
-    connection.end();
+    start();
   });
 }
 
@@ -267,7 +368,7 @@ function addRole() {
           {
             type: "list",
             name: "department",
-            message: "What is the department id?",
+            message: "What department is the new role?",
             choices: results.map((res) => res.name),
           },
         ])
