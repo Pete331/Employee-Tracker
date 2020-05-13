@@ -25,12 +25,15 @@ function start() {
         "View all employees by department",
         "View all employees by manager",
         "Add employee",
+        "Remove employee",
         "Add manager",
         "Update employee role",
         "Update employee manager",
         "View all roles",
         "Add role",
         "Remove role",
+        "Add department",
+        "Remove department",
         "Exit",
       ],
     })
@@ -49,6 +52,9 @@ function start() {
         case "Add employee":
           addEmployee();
           break;
+        case "Remove employee":
+          removeEmployee();
+          break;
         case "Add manager":
           addEmployee();
           break;
@@ -66,6 +72,12 @@ function start() {
           break;
         case "Remove role":
           removeRole();
+          break;
+        case "Add department":
+          addDepartment();
+          break;
+        case "Remove department":
+          removeDepartment();
           break;
         case "Exit":
           connection.end();
@@ -411,6 +423,74 @@ function removeRole() {
           function (err, results) {
             if (err) throw err;
             console.log("The role was removed successfully!");
+            start();
+          }
+        );
+      });
+  });
+}
+
+function addDepartment() {
+  inquirer
+    .prompt({
+      type: "item",
+      name: "departmentName",
+      message: "What is the name of the new department?",
+    })
+    .then(function (answer) {
+      // returns object of selected department so that id can be selected and input into role table
+      connection.query(
+        `INSERT INTO department SET name='${answer.departmentName}'`,
+        function (err) {
+          if (err) throw err;
+          console.log("The department was created successfully!");
+          start();
+        }
+      );
+    });
+}
+function removeDepartment() {
+  connection.query("SELECT * FROM department", function (err, results) {
+    if (err) throw err;
+    inquirer
+      .prompt({
+        type: "list",
+        name: "removeDepartment",
+        message: "Which department would you like to remove?",
+        choices: results.map((res) => res.name),
+      })
+      .then(function (answer) {
+        connection.query(
+          `DELETE FROM department WHERE name='${answer.removeDepartment}'`,
+          function (err, results) {
+            if (err) throw err;
+            console.log("The department was removed successfully!");
+            start();
+          }
+        );
+      });
+  });
+}
+
+function removeEmployee (){
+  connection.query("SELECT id, CONCAT(first_name, ' ', last_name) employee FROM employee", function (err, results) {
+    if (err) throw err;
+    inquirer
+      .prompt({
+        type: "list",
+        name: "removeEmployee",
+        message: "Which employee would you like to remove?",
+        choices: results.map((res) => res.employee),
+      })
+      .then(function (answer) {
+        const objectId = results.find(
+          (res) => res.employee === answer.removeEmployee
+        );
+        connection.query(
+          `DELETE FROM employee WHERE id='${objectId.id}'`,
+          function (err, results) {
+            if (err) throw err;
+            console.log("The employee was removed successfully!");
             start();
           }
         );
