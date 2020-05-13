@@ -26,21 +26,20 @@ function start() {
         "View all employees by manager",
         "Add employee",
         "Remove employee",
-        "Add manager",
         "Update employee role",
         "Update employee manager",
         "View all roles",
-        "Add role",
-        "Remove role",
         "Add department",
         "Remove department",
+        "Add role",
+        "Remove role",
+        "View wages by department",
         "Exit",
       ],
     })
     .then(function (answer) {
       switch (answer.homeScreen) {
         case "View all employees":
-          console.log("yay");
           viewEmployees();
           break;
         case "View all employees by department":
@@ -54,9 +53,6 @@ function start() {
           break;
         case "Remove employee":
           removeEmployee();
-          break;
-        case "Add manager":
-          addEmployee();
           break;
         case "Update employee role":
           updateEmployeeRole();
@@ -78,6 +74,9 @@ function start() {
           break;
         case "Remove department":
           removeDepartment();
+          break;
+        case "View wages by department":
+          viewWages();
           break;
         case "Exit":
           connection.end();
@@ -111,7 +110,6 @@ function departmentView() {
         choices: results.map((res) => res.name),
       })
       .then(function (answer) {
-        console.log(answer.department);
         connection.query(
           `SELECT employee.id, employee.first_name, employee.last_name, role.title, department.name department FROM employee INNER JOIN role ON (employee.role_id = role.id) INNER JOIN department ON (role.department_id = department.id AND department.name = '${answer.department}')`,
           function (err, results) {
@@ -134,7 +132,6 @@ function managerView() {
           element.manager = "No manager assigned";
         }
       });
-      console.log(results);
       if (err) throw err;
       inquirer
         .prompt({
@@ -270,7 +267,19 @@ function updateEmployeeRole() {
         })
         .then(function (answer) {
           // selects id of employee that was selected to be changed and stores as a variable
-          const employeeSelectionId = answer.employeeRole.charAt(0);
+
+          const employeeSelection = results.find(
+            (res) =>
+              res.id +
+                " - " +
+                res.first_name +
+                " " +
+                res.last_name +
+                " - " +
+                res.title ===
+              answer.employeeRole
+          );
+
           connection.query("SELECT id, title FROM role", function (
             err,
             results2
@@ -291,7 +300,7 @@ function updateEmployeeRole() {
                   (res) => res.title === answer.employeeNewRole
                 );
                 connection.query(
-                  `UPDATE employee SET role_id = ${objectRole.id} WHERE id = ${employeeSelectionId}`,
+                  `UPDATE employee SET role_id = ${objectRole.id} WHERE id = ${employeeSelection.id}`,
                   function (err) {
                     if (err) throw err;
                     console.log("The role was updated successfully!");
@@ -472,28 +481,42 @@ function removeDepartment() {
   });
 }
 
-function removeEmployee (){
-  connection.query("SELECT id, CONCAT(first_name, ' ', last_name) employee FROM employee", function (err, results) {
-    if (err) throw err;
-    inquirer
-      .prompt({
-        type: "list",
-        name: "removeEmployee",
-        message: "Which employee would you like to remove?",
-        choices: results.map((res) => res.employee),
-      })
-      .then(function (answer) {
-        const objectId = results.find(
-          (res) => res.employee === answer.removeEmployee
-        );
-        connection.query(
-          `DELETE FROM employee WHERE id='${objectId.id}'`,
-          function (err, results) {
-            if (err) throw err;
-            console.log("The employee was removed successfully!");
-            start();
-          }
-        );
-      });
-  });
+function removeEmployee() {
+  connection.query(
+    "SELECT id, CONCAT(first_name, ' ', last_name) employee FROM employee",
+    function (err, results) {
+      if (err) throw err;
+      inquirer
+        .prompt({
+          type: "list",
+          name: "removeEmployee",
+          message: "Which employee would you like to remove?",
+          choices: results.map((res) => res.employee),
+        })
+        .then(function (answer) {
+          const objectId = results.find(
+            (res) => res.employee === answer.removeEmployee
+          );
+          connection.query(
+            `DELETE FROM employee WHERE id='${objectId.id}'`,
+            function (err, results) {
+              if (err) throw err;
+              console.log("The employee was removed successfully!");
+              start();
+            }
+          );
+        });
+    }
+  );
+}
+
+function viewWages() {
+  connection.query(
+    "SELECT department.id, department.name, sum(role.salary) as wageSum FROM department JOIN role ON (department.id = role.department_id) GROUP BY department.name",
+    function (err, results) {
+      if (err) throw err;
+      console.table(results);
+      start();
+    }
+  );
 }
